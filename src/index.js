@@ -29,6 +29,7 @@ const removeDuplicatesByKey = (key, file, reprocessFromStart, timeBetweenCalls) 
             if(isOK == "OK"){
                 console.log("Total de registros duplicados retirados: " + parseInt(results.length - filteredActionIdArr.length))
                 generateFile('result', 'actionId-sent-to-reprocess', filteredActionIdArr.toString());
+                console.log("Total de registros a ser enviados:" + filteredActionIdArr.length)
                 console.log("arquivo gerado e requisições sendo realizadas. Aguarde!")
             }
 
@@ -37,6 +38,15 @@ const removeDuplicatesByKey = (key, file, reprocessFromStart, timeBetweenCalls) 
         }
     })
 }
+
+// function resilienceAndRecovery() {
+//     fs.readFile('./error/actionId-repocess-error.txt', (err, data) => {
+//         if(err)
+//             console.log(err.message);
+
+//         console.log(data)
+//     })
+// }
 
 function generateFile(dir, fileName, arr) {
     fs.writeFile(`./src/files/${dir}/${fileName}.txt`, arr.toString(),  (err) => {
@@ -72,9 +82,12 @@ async function sendActionIdsToReprocess(arr, reprocessFromStart) {
         });
         return "OK";
     } catch (error) {
-        generateFile('error', 'actionId-error', arr);
-        throw Error(`Somenthing in request went wrong. Consult actionId-error file on error dir`)
+        throw Error(`Algo na requisição falhou. Consulte o arquivo actionId-reprocess-error`)
     }
+}
+
+function removeFile(fileName){
+    fs.unlink(`./src/files/result/${fileName}.txt`, (_) => {});
 }
 
 async function buildRecursiveReprocessPolicy(arr, reprocessFromStart, timeBetweenCalls) {
@@ -93,16 +106,18 @@ async function buildRecursiveReprocessPolicy(arr, reprocessFromStart, timeBetwee
 
             isOK = await sendActionIdsToReprocess(firstFiveHundred, reprocessFromStart);
 
-            setTimeout(() => {
-                buildRecursiveReprocessPolicy(remainingValues, reprocessFromStart, timeBetweenCalls);
+            setTimeout(async () => {
+                isOK = await buildRecursiveReprocessPolicy(remainingValues, reprocessFromStart, timeBetweenCalls);
             }, timeBetweenCalls);
         }
 
-        return isOK;
-
     } catch (error) {
-        throw error;
+        generateFile('error', 'actionId-reprocess-error', arr);
+        removeFile('actionId-sent-to-reprocess');
+        console.log(error.message);
     }
+
+    return isOK;
 }
 
 module.exports = removeDuplicatesByKey;
